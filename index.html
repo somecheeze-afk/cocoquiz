@@ -5,18 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>CoCo壱クイズ</title>
 
-<!-- PWA -->
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="CoCo壱クイズ">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="apple-touch-icon" href="icons/icon-180.png">
-
 <style>
   :root { --c1:#2563eb; --bg:#f5f7fb; }
   html,body{height:100%;margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",sans-serif}
   .container{max-width:720px;margin:0 auto;padding:16px}
-  .card{background:#fff;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.06);padding:20px;position:relative;z-index:0}
+  .card{background:#fff;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.06);padding:20px}
   h1{margin:0 0 8px}
   .muted{color:#667085}
   button{appearance:none;border:0;border-radius:12px;background:var(--c1);color:#fff;font-weight:700;padding:14px 16px;cursor:pointer;touch-action:manipulation}
@@ -36,7 +29,6 @@
   .chip{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef2ff;color:#1f2a5a;font-size:12px;margin-bottom:8px}
   .splash{height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e0f2fe,#d1fae5)}
   .fade{animation:fade .4s ease}
-  #result{position:relative;z-index:0} /* 重なり対策 */
   @keyframes fade {from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none}}
 </style>
 </head>
@@ -47,7 +39,7 @@
   <div class="center" style="flex-direction:column;gap:16px">
     <div style="font-size:96px">🍛</div>
     <h1 style="margin:0">CoCo壱クイズ</h1>
-    <div class="muted">教育用ミニアプリ（オフライン可）</div>
+    <div class="muted">教育用ミニアプリ</div>
   </div>
 </div>
 
@@ -111,7 +103,7 @@
 </div>
 
 <script>
-/* ====== データ ====== */
+/* ====== 問題 ====== */
 const QUESTIONS = [
   { prompt:"キャンペーンの正式名称はどれ？",
     choices:["ココスマイル企画","ココリターン企画 ～CoCo試し～","ココトッピングフェスタ","ココ再来チャレンジ"],
@@ -166,7 +158,7 @@ const promptEl=document.getElementById('prompt'), choiceBox=document.getElementB
 const inputBox=document.getElementById('inputBox'), ansInput=document.getElementById('answerInput'), resultEl=document.getElementById('result');
 const nextBtn=document.getElementById('nextBtn'), bar=document.getElementById('bar'), catChip=document.getElementById('catChip'), scoreEl=document.getElementById('score');
 
-/* ====== Splash ====== */
+/* ====== 初期表示 ====== */
 setTimeout(()=>{ splash.style.display='none'; app.style.display='block'; }, 900);
 
 /* ====== Setup ====== */
@@ -177,34 +169,27 @@ setTimeout(()=>{ splash.style.display='none'; app.style.display='block'; }, 900)
 })();
 qRange.addEventListener('input', ()=> qLabel.textContent = qRange.value);
 
-/* ====== Safer button enabling/disabling ====== */
 function disableNext(){
   nextBtn.disabled = true;
   nextBtn.classList.add('secondary');
-  nextBtn.style.pointerEvents = 'none';
 }
 function enableNext(){
   nextBtn.disabled = false;
   nextBtn.classList.remove('secondary');
-  nextBtn.style.pointerEvents = 'auto';
 }
 
-/* ====== Event binding (click + touchend) ====== */
-function bindClickAndTouch(el, handler){
-  el.addEventListener('click', e => { if(el.disabled) return; handler(e); });
-  el.addEventListener('touchend', e => { if(el.disabled) return; e.preventDefault(); handler(e); }, {passive:true});
-}
-bindClickAndTouch(document.getElementById('startBtn'), () => {
+/* ====== Event ====== */
+document.getElementById('startBtn').addEventListener('click', () => {
   settings.count = Number(qRange.value);
   settings.category = catSel.value || null;
   settings.shuffle = shuf.checked;
   start();
 });
-bindClickAndTouch(document.getElementById('againBtn'), () => {
+document.getElementById('againBtn').addEventListener('click', () => {
   startV.style.display='block'; quizV.style.display='none'; finV.style.display='none';
 });
-bindClickAndTouch(document.getElementById('nextBtn'), () => next());
-bindClickAndTouch(document.getElementById('answerBtn'), () => checkInput());
+document.getElementById('answerBtn').addEventListener('click', checkInput);
+document.getElementById('nextBtn').addEventListener('click', next);
 
 /* ====== Logic ====== */
 function start(){
@@ -214,19 +199,23 @@ function start(){
   startV.style.display='none'; finV.style.display='none'; quizV.style.display='block';
   render();
 }
+
 function render(){
   const q = pool[idx]; if(!q){ finish(); return; }
 
+  // --- リセット ---
+  choiceBox.innerHTML = '';
+  inputBox.style.display = 'none';
+  ansInput.value = '';
+  resultEl.style.display = 'none';
+  resultEl.textContent = '';
+  disableNext();
+  // -----------------
+
   // 進捗
   bar.style.width = `${Math.round((idx)/Math.max(1,pool.length)*100)}%`;
-
-  // リセット
-  resultEl.style.display='none'; resultEl.textContent='';
-  disableNext();
-
-  catChip.textContent=q.category;
-  promptEl.textContent=q.prompt;
-  choiceBox.innerHTML=''; inputBox.style.display='none';
+  catChip.textContent = q.category;
+  promptEl.textContent = q.prompt;
 
   if(q.choices && q.choices.length){
     let opts = q.choices.slice(); if(settings.shuffle) opts = shuffle(opts);
@@ -234,25 +223,25 @@ function render(){
       const b=document.createElement('button');
       b.type='button';
       b.className='opt'; b.textContent=txt;
-      bindClickAndTouch(b, () => {
+      b.addEventListener('click', () => {
         const ok = norm(txt)===norm(q.answer);
         if(ok){ score++; ping(true);} else { ping(false); }
         resultEl.textContent = ok ? "正解！🎉" : `残念… 正解は「${q.answer}」`;
         resultEl.style.display='block';
-        // 色付け＆ロック
         [...choiceBox.children].forEach(c=>{
           const t=c.textContent;
           c.classList.add(norm(t)===norm(q.answer)?'correct':(t===txt?'incorrect':''));
           c.disabled=true;
         });
-        enableNext(); // ← 必ず有効化
+        enableNext();
       });
       choiceBox.appendChild(b);
     });
-  }else{
+  } else {
     inputBox.style.display='block';
   }
 }
+
 function checkInput(){
   const q=pool[idx];
   const ok = norm(ansInput.value)===norm(q.answer);
@@ -261,22 +250,17 @@ function checkInput(){
   resultEl.style.display='block';
   enableNext();
 }
+
 function next(){
   idx++;
   if(idx>=pool.length){ finish(); }
   else { render(); }
 }
+
 function finish(){
   bar.style.width="100%";
   quizV.style.display='none'; finV.style.display='block';
   scoreEl.textContent = `スコア： ${score} / ${pool.length}`;
-}
-
-/* ====== Service Worker ====== */
-if('serviceWorker' in navigator){
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(console.error);
-  });
 }
 </script>
 </body>
