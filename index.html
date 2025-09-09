@@ -16,13 +16,14 @@
   :root { --c1:#2563eb; --bg:#f5f7fb; }
   html,body{height:100%;margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",sans-serif}
   .container{max-width:720px;margin:0 auto;padding:16px}
-  .card{background:#fff;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.06);padding:20px}
+  .card{background:#fff;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.06);padding:20px;position:relative;z-index:0}
   h1{margin:0 0 8px}
   .muted{color:#667085}
-  button{appearance:none;border:0;border-radius:12px;background:var(--c1);color:#fff;font-weight:700;padding:14px 16px;cursor:pointer}
+  button{appearance:none;border:0;border-radius:12px;background:var(--c1);color:#fff;font-weight:700;padding:14px 16px;cursor:pointer;touch-action:manipulation}
   button.secondary{background:#eef2ff;color:#1f2a5a}
+  button[disabled]{opacity:.6;cursor:not-allowed;pointer-events:none}
   .opt{display:block;width:100%;text-align:left;margin:10px 0;padding:14px 16px;border-radius:12px;background:#f2f4f7;border:1px solid transparent;font-weight:600}
-  .opt[disabled]{opacity:.7;cursor:not-allowed}
+  .opt[disabled]{opacity:.8;cursor:not-allowed}
   .opt.correct{background:#e6f9ec;border-color:#86efac}
   .opt.incorrect{background:#fdecec;border-color:#fca5a5}
   .row{display:flex;gap:12px;flex-wrap:wrap}
@@ -35,6 +36,7 @@
   .chip{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef2ff;color:#1f2a5a;font-size:12px;margin-bottom:8px}
   .splash{height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e0f2fe,#d1fae5)}
   .fade{animation:fade .4s ease}
+  #result{position:relative;z-index:0} /* 重なり対策 */
   @keyframes fade {from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none}}
 </style>
 </head>
@@ -86,7 +88,7 @@
       <div id="choiceBox"></div>
 
       <div id="inputBox" style="display:none">
-        <input id="answerInput" type="text" placeholder="答えを入力">
+        <input id="answerInput" type="text" placeholder="答えを入力" autocomplete="off" autocapitalize="none" />
         <div style="height:10px"></div>
         <button id="answerBtn" type="button">答える</button>
       </div>
@@ -109,7 +111,7 @@
 </div>
 
 <script>
-/* ====== 問題 ====== */
+/* ====== データ ====== */
 const QUESTIONS = [
   { prompt:"キャンペーンの正式名称はどれ？",
     choices:["ココスマイル企画","ココリターン企画 ～CoCo試し～","ココトッピングフェスタ","ココ再来チャレンジ"],
@@ -137,7 +139,7 @@ const QUESTIONS = [
     answer:"期間限定トッピング → みせココ", category:"レジ操作" }
 ];
 
-/* ====== 便利関数 & 効果音 ====== */
+/* ====== Util / Sound ====== */
 const norm = s => (s??"").trim().toLowerCase().normalize("NFKC");
 const shuffle = arr => arr.sort(()=>Math.random()-0.5);
 let audioCtx;
@@ -155,7 +157,7 @@ function ping(ok=true){
   o.connect(g).connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.26);
 }
 
-/* ====== 状態/UI要素 ====== */
+/* ====== State & Elements ====== */
 let pool=[], idx=0, score=0, settings={count:5, category:null, shuffle:true};
 const splash=document.getElementById('splash'), app=document.getElementById('app');
 const startV=document.getElementById('start'), quizV=document.getElementById('quiz'), finV=document.getElementById('finish');
@@ -164,34 +166,47 @@ const promptEl=document.getElementById('prompt'), choiceBox=document.getElementB
 const inputBox=document.getElementById('inputBox'), ansInput=document.getElementById('answerInput'), resultEl=document.getElementById('result');
 const nextBtn=document.getElementById('nextBtn'), bar=document.getElementById('bar'), catChip=document.getElementById('catChip'), scoreEl=document.getElementById('score');
 
-/* ====== 初期化 ====== */
-setTimeout(()=>{ splash.style.display='none'; app.style.display='block'; }, 1000);
+/* ====== Splash ====== */
+setTimeout(()=>{ splash.style.display='none'; app.style.display='block'; }, 900);
 
-// カテゴリ生成
+/* ====== Setup ====== */
 (() => {
   const cats = Array.from(new Set(QUESTIONS.map(q=>q.category))).sort();
   catSel.innerHTML = `<option value="">（すべて）</option>` + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
   qRange.max = Math.max(QUESTIONS.length,3);
 })();
-
 qRange.addEventListener('input', ()=> qLabel.textContent = qRange.value);
 
-// クリックイベント（すべて addEventListener で）
-document.getElementById('startBtn').addEventListener('click', () => {
+/* ====== Safer button enabling/disabling ====== */
+function disableNext(){
+  nextBtn.disabled = true;
+  nextBtn.classList.add('secondary');
+  nextBtn.style.pointerEvents = 'none';
+}
+function enableNext(){
+  nextBtn.disabled = false;
+  nextBtn.classList.remove('secondary');
+  nextBtn.style.pointerEvents = 'auto';
+}
+
+/* ====== Event binding (click + touchend) ====== */
+function bindClickAndTouch(el, handler){
+  el.addEventListener('click', e => { if(el.disabled) return; handler(e); });
+  el.addEventListener('touchend', e => { if(el.disabled) return; e.preventDefault(); handler(e); }, {passive:true});
+}
+bindClickAndTouch(document.getElementById('startBtn'), () => {
   settings.count = Number(qRange.value);
   settings.category = catSel.value || null;
   settings.shuffle = shuf.checked;
   start();
 });
-
-document.getElementById('againBtn').addEventListener('click', () => {
+bindClickAndTouch(document.getElementById('againBtn'), () => {
   startV.style.display='block'; quizV.style.display='none'; finV.style.display='none';
 });
+bindClickAndTouch(document.getElementById('nextBtn'), () => next());
+bindClickAndTouch(document.getElementById('answerBtn'), () => checkInput());
 
-document.getElementById('answerBtn')?.addEventListener('click', checkInput);
-document.getElementById('nextBtn').addEventListener('click', next);
-
-/* ====== ロジック ====== */
+/* ====== Logic ====== */
 function start(){
   pool = QUESTIONS.filter(q=>!settings.category||q.category===settings.category);
   shuffle(pool); pool = pool.slice(0, settings.count);
@@ -199,7 +214,6 @@ function start(){
   startV.style.display='none'; finV.style.display='none'; quizV.style.display='block';
   render();
 }
-
 function render(){
   const q = pool[idx]; if(!q){ finish(); return; }
 
@@ -208,7 +222,7 @@ function render(){
 
   // リセット
   resultEl.style.display='none'; resultEl.textContent='';
-  nextBtn.disabled = true; nextBtn.classList.add('secondary');
+  disableNext();
 
   catChip.textContent=q.category;
   promptEl.textContent=q.prompt;
@@ -220,7 +234,7 @@ function render(){
       const b=document.createElement('button');
       b.type='button';
       b.className='opt'; b.textContent=txt;
-      b.addEventListener('click', () => {
+      bindClickAndTouch(b, () => {
         const ok = norm(txt)===norm(q.answer);
         if(ok){ score++; ping(true);} else { ping(false); }
         resultEl.textContent = ok ? "正解！🎉" : `残念… 正解は「${q.answer}」`;
@@ -231,40 +245,34 @@ function render(){
           c.classList.add(norm(t)===norm(q.answer)?'correct':(t===txt?'incorrect':''));
           c.disabled=true;
         });
-        // 次へ有効化
-        nextBtn.disabled=false; nextBtn.classList.remove('secondary');
+        enableNext(); // ← 必ず有効化
       });
       choiceBox.appendChild(b);
     });
   }else{
     inputBox.style.display='block';
-    document.getElementById('answerBtn').addEventListener('click', checkInput, { once:true });
-    // once:true で多重登録防止。下で再度付け直すのでOK
   }
 }
-
 function checkInput(){
   const q=pool[idx];
   const ok = norm(ansInput.value)===norm(q.answer);
   if(ok){ score++; ping(true);} else { ping(false); }
   resultEl.textContent = ok ? "正解！🎉" : `残念… 正解は「${q.answer}」`;
   resultEl.style.display='block';
-  nextBtn.disabled=false; nextBtn.classList.remove('secondary');
+  enableNext();
 }
-
 function next(){
   idx++;
   if(idx>=pool.length){ finish(); }
   else { render(); }
 }
-
 function finish(){
   bar.style.width="100%";
   quizV.style.display='none'; finV.style.display='block';
   scoreEl.textContent = `スコア： ${score} / ${pool.length}`;
 }
 
-/* ====== Service Worker 登録（相対パス） ====== */
+/* ====== Service Worker ====== */
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(console.error);
